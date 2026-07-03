@@ -28,8 +28,8 @@ no installation, no API key needed — the maintainer covers API costs.
 
 **Option B — You supply your own API key**
 The maintainer shares a URL (public or on the local network). The user
-will see an **API key** field in the left sidebar and paste their own Anthropic
-API key there (get one free at [console.anthropic.com](https://console.anthropic.com)).
+will see an **API key** field in the left sidebar and paste their own Anthropic or
+OpenAI API key there.
 The key is used only for the session and is never stored by the application.
 This lets the tool run at no cost to the maintainer, but it is now disabled by
 default. To enable it, set `ALLOW_BROWSER_API_KEY=true` and only do so on
@@ -68,9 +68,10 @@ directly from the sPHENIX GitHub repositories at the moment of the query.
 ┌─────────────────────────────────────────────────────────────┐
 │                    QUERY (every question)                   │
 │                                                             │
-│  User question ──► embed ──► retrieve ──► Anthropic API    │
-│                   vector     top-8 chunks   (Claude)       │
-│                              from index         │          │
+│  User question ──► embed ──► retrieve ──► LLM API          │
+│                   vector     top-8 chunks   (Anthropic or  │
+│                              from index      OpenAI)       │
+│                                               │            │
 │                                           grounded answer  │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -95,9 +96,9 @@ subsequent updates take seconds.
 
 - Python 3.10 or later
 - Git
-- An [Anthropic API key](https://console.anthropic.com/) (for answer generation)
+- An Anthropic or OpenAI API key (for answer generation)
 - ~5 GB disk space (for cloned repos and the FAISS vector index)
-- Internet access to reach GitHub and the Anthropic API
+- Internet access to reach GitHub and your selected LLM provider API
 
 The embedding model (`BAAI/bge-large-en-v1.5`, ~1.3 GB) is downloaded automatically
 from HuggingFace on first run and cached locally. No GPU is required.
@@ -127,7 +128,7 @@ source .venv/bin/activate   # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-**3. Set your Anthropic API key**
+**3. Set your LLM provider API key**
 
 Copy the example environment file and add your key:
 
@@ -138,12 +139,17 @@ cp .env.example .env
 Then open `.env` and replace the placeholder:
 
 ```
+LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-your-key-here
+OPENAI_API_KEY=
+ANTHROPIC_MODEL=claude-sonnet-4-6
+OPENAI_MODEL=gpt-4.1-mini
 ALLOW_BROWSER_API_KEY=false
 ```
 
 The `.env` file is listed in `.gitignore` and will never be committed to git.
 Never paste your API key directly into any Python file or a crontab line.
+Set `LLM_PROVIDER=openai` and `OPENAI_API_KEY=...` if you want to use OpenAI instead.
 Leave `ALLOW_BROWSER_API_KEY=false` unless you explicitly want the sidebar key
 field and you trust the connection your collaborators are using.
 
@@ -192,6 +198,49 @@ Open your browser at `http://localhost:8501`. The interface includes a sidebar w
 example questions, source file citations for every answer, and an optional view of
 the raw retrieved text chunks.
 
+**Google Colab / Jupyter notebook:**
+
+The retrieval and answer-generation backend is not tied to Streamlit. You can run
+the same assistant in Google Colab with a notebook-native UI:
+
+```python
+!git clone https://github.com/<your-org>/sphenix-rag.git
+%cd sphenix-rag
+```
+
+```python
+!pip install -r requirements.txt
+```
+
+```python
+!python ingest.py
+```
+
+```python
+from colab_app import create_session
+
+session = create_session(provider="openai")
+session.launch()
+```
+
+`create_session()` resolves credentials in this order:
+
+1. `api_key=...` and optional `provider=...` passed in code
+2. environment variables `LLM_PROVIDER` plus the matching provider key
+3. Google Colab secrets named `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
+4. an interactive password prompt
+
+If you prefer one-off notebook calls instead of the widget chat UI:
+
+```python
+from colab_app import ask_once
+
+ask_once(
+    "How do I run a Fun4All macro for calorimeter simulation?",
+    provider="openai",
+)
+```
+
 **Command-line interface:**
 
 ```bash
@@ -227,8 +276,9 @@ completes in under 10 seconds.
 ```
 sphenix-rag/
 ├── ingest.py         # Ingestion pipeline: clone, parse, embed, index
-├── rag.py            # Query engine: retrieve + generate via Anthropic API
+├── rag.py            # Query engine: retrieve + generate via Anthropic or OpenAI
 ├── app.py            # Streamlit web interface
+├── colab_app.py      # Notebook / Google Colab interface
 ├── requirements.txt  # Python dependencies
 ├── .env.example      # Template for your API key (copy to .env)
 ├── .gitignore        # Auto-generated on first ingest run
@@ -255,18 +305,16 @@ automatically. They are rebuilt locally by running `ingest.py`.
 
 **What data leaves your machine:**
 When you submit a question, the question text and the retrieved code/documentation
-chunks are sent to the Anthropic API to generate an answer. All retrieved content
+chunks are sent to the configured LLM provider API to generate an answer. All retrieved content
 comes from the public sPHENIX GitHub repositories.
-
-**Anthropic API data policy (as of 2025):**
-API inputs and outputs are retained for up to 7 days and are then permanently
-deleted. They are never used to train Anthropic's models. See
-[Anthropic's privacy documentation](https://privacy.claude.com) for details.
 
 **Important:** Do not paste unpublished physics results, proprietary analysis code,
 internal configuration files, BNL credentials, or any non-public information into
 this tool. The assistant is designed for questions about the public sPHENIX software
 stack only.
+
+Review the retention and training policy for whichever provider you configure before
+sharing the app with collaborators.
 
 **What stays local:**
 The FAISS index, all cloned repository files, and the embedding model run entirely
@@ -302,9 +350,8 @@ git.
 
 **Change the language model:**
 
-In `rag.py`, change the `model` parameter in the `client.messages.create()` call.
-The current default is `claude-sonnet-4-6`. Available options and their trade-offs
-are documented at [docs.anthropic.com](https://docs.anthropic.com).
+Set `ANTHROPIC_MODEL` or `OPENAI_MODEL` in `.env` to override the default model
+for that provider. You can also change the defaults directly in `rag.py`.
 
 **Change the number of retrieved chunks:**
 
@@ -320,13 +367,14 @@ By default the assistant runs on your local machine. To share it:
 
 **Streamlit Community Cloud (free, simplest):**
 Push this repository to GitHub, connect it at
-[share.streamlit.io](https://share.streamlit.io), and add `ANTHROPIC_API_KEY` as
-a secret in the Streamlit dashboard. Collaborators get a public URL. Note that
+[share.streamlit.io](https://share.streamlit.io), and add `LLM_PROVIDER` plus the
+matching `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` as secrets in the Streamlit dashboard.
+Collaborators get a public URL. Note that
 all queries will use your API key.
 
 **Collaborator-supplied API keys:**
 The sidebar in the web interface includes an optional field where each collaborator
-can paste their own Anthropic API key. When a key is entered there, it is used for
+can paste their own Anthropic or OpenAI API key. When a key is entered there, it is used for
 that session only and is never stored or logged by the application.
 
 **Local network deployment:**
@@ -368,9 +416,9 @@ server's own API key or a reverse proxy that provides HTTPS.
 **`FileNotFoundError: Index not found`**
 Run `python ingest.py` to build the index before starting the assistant.
 
-**`ANTHROPIC_API_KEY is not set`**
-Ensure your `.env` file exists, contains a valid key, and is in the same directory
-as `rag.py` and `app.py`.
+**`ANTHROPIC_API_KEY is not set` or `OPENAI_API_KEY is not set`**
+Ensure your `.env` file exists, `LLM_PROVIDER` matches the provider you want, and
+the corresponding API key is present in the same directory as `rag.py` and `app.py`.
 
 **Pull fails during ingestion**
 The cached repository in `repos/<name>/` may be corrupted. Delete that subdirectory

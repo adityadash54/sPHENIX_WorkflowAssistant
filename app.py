@@ -2,7 +2,7 @@
 app.py — sPHENIX Workflow Assistant (Streamlit UI)
 
 Run with:  streamlit run app.py
-API key:   add ANTHROPIC_API_KEY=sk-ant-... to a .env file (never hardcode it)
+API key:   add ANTHROPIC_API_KEY or OPENAI_API_KEY to a .env file
 """
 
 import html
@@ -11,7 +11,7 @@ import threading
 import time
 import streamlit as st
 from dotenv import load_dotenv
-from rag import query
+from rag import query, resolve_api_credentials
 
 load_dotenv()
 
@@ -40,6 +40,17 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 
 ALLOW_BROWSER_API_KEY = _env_flag("ALLOW_BROWSER_API_KEY", default=False)
+
+
+def _default_browser_provider() -> str:
+    configured = os.environ.get("LLM_PROVIDER")
+    if configured in {"anthropic", "openai"}:
+        return configured
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    if os.environ.get("OPENAI_API_KEY"):
+        return "openai"
+    return "anthropic"
 
 def _check_rate_limit() -> bool:
     """Return True if within the global rate limit, False if exceeded."""
@@ -129,16 +140,23 @@ with st.sidebar:
     # appropriate on localhost or a trusted HTTPS deployment.
     st.divider()
     user_key = ""
+    user_provider = _default_browser_provider()
     if ALLOW_BROWSER_API_KEY:
         st.markdown("### API key (optional)")
         st.caption(
             "Only paste a personal API key on localhost or over a trusted HTTPS deployment. "
             "Do not enter it into a plain HTTP page on a shared network."
         )
+        user_provider = st.radio(
+            "Provider",
+            options=["anthropic", "openai"],
+            horizontal=True,
+            format_func=lambda value: "Anthropic" if value == "anthropic" else "OpenAI",
+        )
         user_key = st.text_input(
-            "Paste your Anthropic API key to use your own account",
+            "Paste your Anthropic or OpenAI API key to use your own account",
             type="password",
-            help="If left blank, the server's key is used. Only enter your own key on a trusted connection.",
+            help="If left blank, the server's configured key is used. Only enter your own key on a trusted connection.",
         )
     else:
         st.markdown("### API key")
@@ -165,10 +183,9 @@ st.markdown("""
 st.markdown("""
 <div class="disclaimer">
   ⚠️ <strong>Data notice:</strong> Your questions and retrieved code snippets are sent
-  to Anthropic's API to generate answers. All content is from public sPHENIX GitHub
+  to the configured LLM provider API to generate answers. All content is from public sPHENIX GitHub
   repositories. <strong>Do not paste unpublished results, internal BNL data, or
-  proprietary information into this tool.</strong> Queries are retained by Anthropic
-  for up to 7 days and are never used for model training (API policy).
+  proprietary information into this tool.</strong>
 </div>
 """, unsafe_allow_html=True)
 
@@ -203,7 +220,8 @@ if pending:
     user_input = pending
 
 if user_input:
-    effective_api_key = user_key or os.environ.get("ANTHROPIC_API_KEY")
+    effective_api_key = user_key or None
+    effective_provider = user_provider if user_key else None
 
     # Only throttle usage of the server's shared key — a collaborator using
     # their own key is spending their own quota, not the shared one.
@@ -215,9 +233,14 @@ if user_input:
         st.stop()
 
     # Check API key availability
-    if not effective_api_key:
+    try:
+        resolve_api_credentials(
+            api_key=effective_api_key,
+            provider=effective_provider,
+        )
+    except EnvironmentError:
         st.error(
-            "No API key configured. Set ANTHROPIC_API_KEY on the server."
+            "No API key configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY on the server."
         )
         st.stop()
 
@@ -239,7 +262,12 @@ if user_input:
     with st.chat_message("assistant"):
         with st.spinner("Retrieving from sPHENIX repos and generating answer..."):
             try:
-                result = query(user_input, history=history, api_key=effective_api_key)
+                result = query(
+                    user_input,
+                    history=history,
+                    api_key=effective_api_key,
+                    provider=effective_provider,
+                )
             except FileNotFoundError:
                 # FIX: sanitised error — don't expose host file paths
                 st.error(
@@ -247,7 +275,7 @@ if user_input:
                     "Ask the administrator to run `python ingest.py`."
                 )
                 st.stop()
-            except EnvironmentError:
+            except (EnvironmentError, ValueError):
                 # FIX: don't expose the actual key or its absence details
                 st.error(
                     "API key configuration error. "

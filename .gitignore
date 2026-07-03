@@ -1,0 +1,10 @@
+ProjectDocumentation.txt
+.DS_Store
+.env
+.pycache_local/
+.streamlit/secrets.toml
+.venv/
+__pycache__/
+*.pyc
+index/
+repos/
