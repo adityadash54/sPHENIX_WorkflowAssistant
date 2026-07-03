@@ -1,0 +1,9 @@
+anthropic>=0.25.0
+gitpython>=3.1.40
+sentence-transformers>=2.6.0
+faiss-cpu>=1.7.4
+streamlit>=1.32.0
+nbformat>=5.9.0
+tqdm>=4.66.0
+rich>=13.7.0
+python-dotenv>=1.0.0
