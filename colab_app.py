@@ -27,8 +27,8 @@ MAX_HISTORY_MESSAGES = 8
 DEFAULT_EXAMPLES = [
     "How do I run a Fun4All macro for calorimeter simulation?",
     "Generate a skeleton steering macro for HCAL reconstruction.",
-    "How do I set up the Singularity container for sPHENIX?",
-    "What is the workflow for running the TPC track reconstruction?",
+    "What does PHCompositeNode do and how do I use it?",
+    "Where is the main Fun4All server loop defined in coresoftware?",
 ]
 
 

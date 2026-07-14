@@ -2,7 +2,7 @@
 ingest.py — sPHENIX RAG Ingestion Pipeline (Incremental)
 
 On the FIRST run:
-  - Clones all 5 sPHENIX repos
+  - Clones the configured sPHENIX repos
   - Parses, chunks, embeds every relevant file
   - Saves a FAISS IndexIDMap + state.json (commit hashes + file→chunk ID map)
   - Saves chunks as chunks.json (safe, no pickle)
@@ -44,18 +44,12 @@ console = Console()
 
 REPOS = {
     "macros":       "https://github.com/sPHENIX-Collaboration/macros.git",
-    "tutorials":    "https://github.com/sPHENIX-Collaboration/tutorials.git",
     "coresoftware": "https://github.com/sPHENIX-Collaboration/coresoftware.git",
-    "analysis":     "https://github.com/sPHENIX-Collaboration/analysis.git",
-    "Singularity":  "https://github.com/sPHENIX-Collaboration/Singularity.git",
 }
 
 INCLUDE_EXTENSIONS = {
     "macros":       {".C", ".h", ".py", ".md", ".sh"},
-    "tutorials":    {".ipynb", ".md", ".C", ".py"},
     "coresoftware": {".md", ".h", ".C"},   # headers + READMEs only (huge repo)
-    "analysis":     {".C", ".h", ".py", ".md"},
-    "Singularity":  {".sh", ".md"},
 }
 
 SHALLOW_REPOS = {"coresoftware"}   # only index top 3 dir levels

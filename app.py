@@ -113,7 +113,7 @@ with st.sidebar:
 
     st.divider()
     st.markdown("### Indexed repositories")
-    for repo in ["macros", "tutorials", "coresoftware", "analysis", "Singularity"]:
+    for repo in ["macros", "coresoftware"]:
         st.markdown(
             f"- [`sPHENIX-Collaboration/{repo}`]"
             f"(https://github.com/sPHENIX-Collaboration/{repo})"
@@ -124,9 +124,8 @@ with st.sidebar:
     examples = [
         "How do I run a Fun4All macro for calorimeter simulation?",
         "Generate a skeleton steering macro for HCAL reconstruction",
-        "How do I set up the Singularity container for sPHENIX?",
-        "What is the workflow for running the TPC track reconstruction?",
-        "How do I add a custom analysis module to Fun4All?",
+        "What does PHCompositeNode do and how do I use it?",
+        "Where is the main Fun4All server loop defined in coresoftware?",
         "What calibration constants does the EMCal need?",
     ]
     for ex in examples:
@@ -176,7 +175,7 @@ if "pending_query" not in st.session_state:
 st.markdown("""
 <div class="rag-header">
   <h1>⚛️ sPHENIX Workflow Assistant</h1>
-  <p>RAG-powered assistant grounded in sPHENIX macros, tutorials, and coresoftware</p>
+  <p>RAG-powered assistant grounded in sPHENIX macros and coresoftware</p>
 </div>
 """, unsafe_allow_html=True)
 

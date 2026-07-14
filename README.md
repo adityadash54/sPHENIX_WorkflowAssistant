@@ -9,9 +9,8 @@ Questions like these get accurate, source-cited answers:
 - *"How do I run a Fun4All macro for calorimeter simulation?"*
 - *"Generate a steering macro skeleton for HCAL reconstruction."*
 - *"What does `PHCompositeNode` do and how do I use it?"*
-- *"How do I add a custom analysis module to the Fun4All framework?"*
-- *"What is the workflow for TPC track reconstruction?"*
-- *"How do I set up the Singularity container environment?"*
+- *"Where is the main Fun4All server loop defined in coresoftware?"*
+- *"What calibration constants does the EMCal need?"*
 
 ---
 
@@ -45,7 +44,7 @@ In all three cases your experience is the same: type a question in the chat box
 at the bottom of the page and receive an answer with source file citations.
 
 > **If you are the first person on your team setting this up**, continue reading
-> from [Requirements](#requirements) below. Setup takes about 30 minutes the
+> from [Requirements](#requirements) below. Setup typically takes a few minutes the
 > first time.
 
 ---
@@ -61,7 +60,7 @@ directly from the sPHENIX GitHub repositories at the moment of the query.
 │                                                             │
 │  GitHub repos ──► parse files ──► chunk text ──► embed     │
 │  (public only)     .C .h .py       ~600 tokens    vectors  │
-│                    .md .sh .ipynb                    │      │
+│                    .md .sh                          │      │
 │                                               FAISS index   │
 └─────────────────────────────────────────────────────────────┘
 
@@ -76,18 +75,20 @@ directly from the sPHENIX GitHub repositories at the moment of the query.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Indexed repositories** (all public, under `github.com/sPHENIX-Collaboration`):
+By default, this repository currently indexes two public repositories under
+`github.com/sPHENIX-Collaboration`:
 
 | Repository | Content indexed |
 |---|---|
 | `macros` | All `.C`, `.h`, `.py`, `.md`, `.sh` files |
-| `tutorials` | All `.ipynb`, `.md`, `.C`, `.py` files |
 | `coresoftware` | Top-level `.md`, `.h`, `.C` files (README and headers) |
-| `analysis` | All `.C`, `.h`, `.py`, `.md` files |
-| `Singularity` | All `.sh`, `.md` files |
+
+Additional repositories such as `tutorials`, `analysis`, and `Singularity` are
+available later as an opt-in expansion. The default stays smaller on purpose so
+first-time setup is faster and less CPU-intensive.
 
 The index is built incrementally — on each update run, only files that changed
-since the last indexed commit are re-processed. A full rebuild takes 15–30 minutes;
+since the last indexed commit are re-processed. A full rebuild typically takes a few minutes;
 subsequent updates take seconds.
 
 ---
@@ -97,7 +98,7 @@ subsequent updates take seconds.
 - Python 3.10 or later
 - Git
 - An Anthropic or OpenAI API key (for answer generation)
-- ~5 GB disk space (for cloned repos and the FAISS vector index)
+- ~3 GB disk space (for cloned repos, caches, and the FAISS vector index)
 - Internet access to reach GitHub and your selected LLM provider API
 
 The embedding model (`BAAI/bge-large-en-v1.5`, ~1.3 GB) is downloaded automatically
@@ -390,7 +391,7 @@ python ingest.py
 
 This will:
 
-1. Clone the 5 sPHENIX repositories listed above into `./repos/`
+1. Clone the default `macros` and `coresoftware` repositories into `./repos/`
 2. Parse all relevant source files
 3. Split files into overlapping text chunks (~600 tokens each)
 4. Embed each chunk using `BAAI/bge-large-en-v1.5` (a strong scientific text model)
@@ -398,7 +399,7 @@ This will:
 6. Save chunk metadata to `./index/chunks.json`
 7. Record the current git commit hash for each repo in `./index/state.json`
 
-**First run:** approximately 15–30 minutes depending on your connection and hardware.
+**First run:** typically a few minutes depending on your connection and hardware.
 
 **Subsequent runs** (after a `git pull` on any repo): seconds, because only changed
 files are re-processed.
@@ -478,7 +479,7 @@ python rag.py "Generate a Fun4All steering macro for Au+Au GEANT4 simulation"
 ## Keeping the index current
 
 The index does not update automatically. To stay current with the latest commits
-across all five repositories, schedule a nightly update using cron:
+across the default indexed repositories, schedule a nightly update using cron:
 
 ```bash
 crontab -e
@@ -510,10 +511,7 @@ sPHENIX_WorkflowAssistant/
 │
 ├── repos/            # Cloned sPHENIX repositories (auto-created, not committed)
 │   ├── macros/
-│   ├── tutorials/
-│   ├── coresoftware/
-│   ├── analysis/
-│   └── Singularity/
+│   └── coresoftware/
 │
 └── index/            # Vector index and metadata (auto-created, not committed)
     ├── sphenix.index # FAISS vector index (binary)
@@ -549,22 +547,42 @@ on your machine. No data is sent to any external service during ingestion.
 
 ## Extending the assistant
 
-**Add more public repositories:**
+**Add the other sPHENIX repositories (optional):**
 
-Edit the `REPOS` and `INCLUDE_EXTENSIONS` dictionaries in `ingest.py`:
+This repository defaults to `macros` and `coresoftware`. If you later want to
+also index `tutorials`, `analysis`, and `Singularity`, edit the `REPOS` and
+`INCLUDE_EXTENSIONS` dictionaries in `ingest.py` so they look like this:
 
 ```python
 REPOS = {
-    ...
-    "new-repo": "https://github.com/sPHENIX-Collaboration/new-repo.git",
+    "macros":       "https://github.com/sPHENIX-Collaboration/macros.git",
+    "tutorials":    "https://github.com/sPHENIX-Collaboration/tutorials.git",
+    "coresoftware": "https://github.com/sPHENIX-Collaboration/coresoftware.git",
+    "analysis":     "https://github.com/sPHENIX-Collaboration/analysis.git",
+    "Singularity":  "https://github.com/sPHENIX-Collaboration/Singularity.git",
 }
+
 INCLUDE_EXTENSIONS = {
-    ...
-    "new-repo": {".C", ".h", ".md"},
+    "macros":       {".C", ".h", ".py", ".md", ".sh"},
+    "tutorials":    {".ipynb", ".md", ".C", ".py"},
+    "coresoftware": {".md", ".h", ".C"},
+    "analysis":     {".C", ".h", ".py", ".md"},
+    "Singularity":  {".sh", ".md"},
 }
 ```
 
-Then run `python ingest.py` to index the new content.
+Then refresh the index:
+
+- local Python install: run `python ingest.py`
+- Docker install: rebuild the ingest image and rerun the hardened ingestion container
+
+This expansion can be noticeably more CPU-intensive and take longer than the
+default two-repository setup, especially on the first full run.
+
+**Add more public repositories beyond those defaults:**
+
+To index an entirely new public repository, extend the same dictionaries with a
+new entry and then rerun ingestion.
 
 **Add local documentation:**
 
