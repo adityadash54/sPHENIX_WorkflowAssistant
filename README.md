@@ -107,18 +107,16 @@ from HuggingFace on first run and cached locally. No GPU is required.
 
 ## Installation
 
+You can set up the assistant in one of two ways: a **Docker** install (most isolated and recommended for secure deployments) or a **pip** install directly into a local Python environment.
+
 **1. Clone this repository**
 
 ```bash
-git clone https://github.com/<your-org>/sphenix-rag.git
-cd sphenix-rag
+git clone https://github.com/<your-org>/sPHENIX_WorkflowAssistant.git
+cd sPHENIX_WorkflowAssistant
 ```
 
 **2. Install Python dependencies**
-
-```bash
-pip install -r requirements.txt
-```
 
 Using a virtual environment is recommended:
 
@@ -128,19 +126,39 @@ source .venv/bin/activate   # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-**Optional: install with Docker**
+If you do not want to set up a new virtual environment, install directly into your current Python environment:
 
-The hardened Docker setup below keeps the runtime container away from your local
-filesystem:
+```bash
+pip install -r requirements.txt
+```
+
+**Docker installation (secure default)**
+
+The Docker flow below is the most isolated default setup in this README. Follow
+these steps as written if you want the safest first install:
 
 - no bind mounts
+- no host networking
+- the web UI is published on `127.0.0.1:8501` only
 - no `--privileged`
 - runtime image does not include `git`
 - both containers can run with a read-only root filesystem
 - model caches, cloned repos, and the FAISS index stay under `/app`
 - serving happens from a separate runtime image after ingestion completes
 
-1. Create a `.env` file from the example and add your API key:
+In this hardened setup, the application root at `/app` remains read-only at runtime.
+Only the mounted subdirectories such as `/app/.cache`, `/app/index`, and `/app/repos`
+are writable where needed.
+
+Keep the host-network isolation defaults in place:
+
+- keep Docker Desktop **Enable host networking** turned off
+- do not run either container with `--network host`
+- keep the localhost-only publish binding `127.0.0.1:8501:8501`
+- if the host runs sensitive services, keep them bound to `127.0.0.1` where possible
+- if you need stricter host-side filtering, use the OS-specific firewall guidance in [Additional host-side hardening](#additional-host-side-hardening-optional)
+
+1. Create a `.env` file from the example:
 
 ```bash
 cp .env.example .env
@@ -186,7 +204,7 @@ Nothing from your host filesystem is mounted into the container.
 docker build --target runtime -t sphenix-rag .
 ```
 
-6. Run the web app from the runtime image:
+6. Run the web app from the runtime image with localhost-only publishing:
 
 ```bash
 docker run -d \
@@ -208,6 +226,40 @@ docker run -d \
 http://localhost:8501
 ```
 
+If the GitHub repository has changed and you want the latest version of the app with the same hardened Docker settings, pull the latest commits, rebuild the images, refresh the index, and restart the runtime container:
+
+```bash
+git pull --ff-only
+docker build --target ingest -t sphenix-rag-ingest .
+docker build --target runtime -t sphenix-rag .
+docker stop sphenix-rag
+docker rm sphenix-rag
+docker run --rm \
+  --name sphenix-rag-ingest \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=256m \
+  --env-file .env \
+  --mount source=sphenix-rag-cache,target=/app/.cache \
+  --mount source=sphenix-rag-index,target=/app/index \
+  --mount source=sphenix-rag-repos,target=/app/repos \
+  --cap-drop=ALL \
+  --security-opt no-new-privileges:true \
+  sphenix-rag-ingest
+docker run -d \
+  --name sphenix-rag \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=256m \
+  --publish 127.0.0.1:8501:8501 \
+  --env-file .env \
+  --mount source=sphenix-rag-cache,target=/app/.cache \
+  --mount source=sphenix-rag-index,target=/app/index,readonly \
+  --cap-drop=ALL \
+  --security-opt no-new-privileges:true \
+  sphenix-rag
+```
+
+The Docker volumes only need to be created once. Keep them if you want to retain the downloaded model, cloned repos, and FAISS index between updates.
+
 Useful container commands:
 
 ```bash
@@ -228,16 +280,20 @@ docker run --rm \
 Important notes:
 
 - Do not use `-v` or `--mount type=bind` if you want the container isolated from local files.
+- Do not replace `127.0.0.1:8501:8501` with `0.0.0.0:8501:8501` unless you intentionally want the UI reachable from other machines.
+- Do not add `--network host`.
 - Do not use `--privileged`.
 - The runtime container has no `git` executable, so it cannot refresh remote repos itself.
 - The application now stores its cache under `/app/.cache`; the repo already ignores that directory locally.
 - Do not mount `/var/run/docker.sock`, SSH agent sockets, `~/.ssh`, `~/.aws`, `~/.config`, or other host credential/config directories into either container.
 - The runtime container only needs `/app/.cache` as writable state and `/app/index` as read-only data. It does not need `/app/repos`.
-- If you also need to block access to services running on the host machine, enforce that separately with your OS firewall or Docker Desktop network policy.
+- If you also need to block access to services running on the host machine, apply the host-side controls below.
 
-**Optional hardening for host-network isolation**
+**Additional host-side hardening (optional)**
 
-If you want the container to have a harder time reaching services running on the host machine itself, use the following OS-specific recipes in addition to the `127.0.0.1:8501:8501` publish binding above.
+The Docker commands above already keep the app on `localhost` and avoid host networking.
+If you want stricter separation from services running on the host machine itself, add the
+following OS-specific controls on top of that default.
 
 **macOS (Docker Desktop)**
 
@@ -373,8 +429,8 @@ The retrieval and answer-generation backend is not tied to Streamlit. You can ru
 the same assistant in Google Colab with a notebook-native UI:
 
 ```python
-!git clone https://github.com/<your-org>/sphenix-rag.git
-%cd sphenix-rag
+!git clone https://github.com/<your-org>/sPHENIX_WorkflowAssistant.git
+%cd sPHENIX_WorkflowAssistant
 ```
 
 ```python
@@ -431,7 +487,7 @@ crontab -e
 Add this line (adjust paths to match your installation):
 
 ```
-0 2 * * * cd /path/to/sphenix-rag && source .venv/bin/activate && python ingest.py >> /tmp/sphenix-rag-ingest.log 2>&1
+0 2 * * * cd /path/to/sPHENIX_WorkflowAssistant && source .venv/bin/activate && python ingest.py >> /tmp/sphenix-rag-ingest.log 2>&1
 ```
 
 This runs at 2:00 AM every night. The log file at `/tmp/sphenix-rag-ingest.log`
@@ -443,14 +499,14 @@ completes in under 10 seconds.
 ## Project structure
 
 ```
-sphenix-rag/
+sPHENIX_WorkflowAssistant/
 ├── ingest.py         # Ingestion pipeline: clone, parse, embed, index
 ├── rag.py            # Query engine: retrieve + generate via Anthropic or OpenAI
 ├── app.py            # Streamlit web interface
 ├── colab_app.py      # Notebook / Google Colab interface
 ├── requirements.txt  # Python dependencies
 ├── .env.example      # Template for your API key (copy to .env)
-├── .gitignore        # Auto-generated on first ingest run
+├── .gitignore        # Keeps local caches, indexes, and secrets out of git
 │
 ├── repos/            # Cloned sPHENIX repositories (auto-created, not committed)
 │   ├── macros/

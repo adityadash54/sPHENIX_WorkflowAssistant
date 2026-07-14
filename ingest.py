@@ -84,12 +84,24 @@ def ensure_gitignore():
     lines_needed = {"repos/", "index/", ".cache/", ".env", "__pycache__/", "*.pyc"}
     existing = set()
     if gitignore.exists():
-        existing = set(gitignore.read_text(encoding="utf-8").splitlines())
+        try:
+            existing = set(gitignore.read_text(encoding="utf-8").splitlines())
+        except OSError as exc:
+            console.print(
+                f"[yellow]![/yellow] Skipping .gitignore read ({exc})"
+            )
+            return
     missing = lines_needed - existing
     if missing:
-        with gitignore.open("a", encoding="utf-8") as f:
-            f.write("\n" + "\n".join(sorted(missing)) + "\n")
-        console.print(f"[green]✓[/green] Updated .gitignore")
+        try:
+            with gitignore.open("a", encoding="utf-8") as f:
+                f.write("\n" + "\n".join(sorted(missing)) + "\n")
+            console.print(f"[green]✓[/green] Updated .gitignore")
+        except OSError as exc:
+            console.print(
+                "[yellow]![/yellow] Skipping .gitignore update because the app "
+                f"directory is not writable ({exc})"
+            )
 
 
 # ── State helpers ─────────────────────────────────────────────────────────────
