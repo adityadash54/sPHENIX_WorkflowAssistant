@@ -32,6 +32,10 @@ from rich.table import Table
 
 import git
 import faiss
+from runtime_config import APP_DIR, INDEX_DIR, REPOS_DIR, configure_local_environment
+
+configure_local_environment()
+
 from sentence_transformers import SentenceTransformer
 
 console = Console()
@@ -56,8 +60,7 @@ INCLUDE_EXTENSIONS = {
 
 SHALLOW_REPOS = {"coresoftware"}   # only index top 3 dir levels
 
-CLONE_DIR   = Path("./repos")
-INDEX_DIR   = Path("./index")
+CLONE_DIR   = REPOS_DIR
 STATE_FILE  = INDEX_DIR / "state.json"
 CHUNKS_FILE = INDEX_DIR / "chunks.json"    # FIX: JSON instead of pickle
 FAISS_FILE  = INDEX_DIR / "sphenix.index"
@@ -77,14 +80,14 @@ def ensure_gitignore():
     Write a .gitignore so repos/ and index/ are never accidentally
     committed to git (they're large and may contain cached source code).
     """
-    gitignore = Path(".gitignore")
-    lines_needed = {"repos/", "index/", ".env", "__pycache__/", "*.pyc"}
+    gitignore = APP_DIR / ".gitignore"
+    lines_needed = {"repos/", "index/", ".cache/", ".env", "__pycache__/", "*.pyc"}
     existing = set()
     if gitignore.exists():
-        existing = set(gitignore.read_text().splitlines())
+        existing = set(gitignore.read_text(encoding="utf-8").splitlines())
     missing = lines_needed - existing
     if missing:
-        with gitignore.open("a") as f:
+        with gitignore.open("a", encoding="utf-8") as f:
             f.write("\n" + "\n".join(sorted(missing)) + "\n")
         console.print(f"[green]✓[/green] Updated .gitignore")
 
@@ -161,6 +164,31 @@ def parse_file(path: Path) -> str:
         return ""
 
 
+def resolve_repo_file(candidate: Path, repo_root: Path) -> Path | None:
+    """Only allow regular files that resolve inside the cloned repository."""
+    if candidate.is_symlink():
+        console.print(f"[dim]  Skipping symlink: {candidate}[/dim]")
+        return None
+
+    try:
+        resolved = candidate.resolve(strict=True)
+    except OSError:
+        return None
+
+    try:
+        resolved.relative_to(repo_root)
+    except ValueError:
+        console.print(
+            f"[red]  Skipping path outside repository root: {candidate}[/red]"
+        )
+        return None
+
+    if not resolved.is_file():
+        return None
+
+    return resolved
+
+
 def chunk_text(text: str, source: str,
                chunk_size: int = CHUNK_SIZE,
                overlap: int = CHUNK_OVERLAP) -> list[dict]:
@@ -180,14 +208,17 @@ def chunk_text(text: str, source: str,
 def collect_all_files(repo_path: Path, repo_name: str) -> list[Path]:
     exts = INCLUDE_EXTENSIONS.get(repo_name, set())
     result = []
+    repo_root = repo_path.resolve()
     for p in repo_path.rglob("*"):
-        if not p.is_file() or p.suffix not in exts:
+        if p.suffix not in exts:
             continue
         if repo_name in SHALLOW_REPOS:
             depth = len(p.relative_to(repo_path).parts)
             if depth > 3:
                 continue
-        result.append(p)
+        resolved = resolve_repo_file(p, repo_root)
+        if resolved is not None:
+            result.append(resolved)
     return result
 
 
@@ -347,6 +378,7 @@ def incremental_update(repos: dict, model: SentenceTransformer,
     summary.add_column("New commit")
 
     for repo_name, (repo_path, repo) in repos.items():
+        repo_root = repo_path.resolve()
         new_commit = repo.head.commit.hexsha
         old_commit = state["commit_hashes"].get(repo_name)
 
@@ -372,8 +404,15 @@ def incremental_update(repos: dict, model: SentenceTransformer,
 
         new_chunks: list[dict] = []
         for rel in changed_rel:
-            abs_path = CLONE_DIR / rel
-            if not abs_path.exists():
+            rel_path = Path(rel)
+            try:
+                repo_rel = rel_path.relative_to(repo_name)
+            except ValueError:
+                console.print(f"[red]  Skipping invalid path: {rel}[/red]")
+                continue
+
+            abs_path = resolve_repo_file(repo_root / repo_rel, repo_root)
+            if abs_path is None:
                 continue
             text = parse_file(abs_path)
             if not text.strip():

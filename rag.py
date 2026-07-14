@@ -13,16 +13,18 @@ import json
 import os
 import sys
 import numpy as np
-from pathlib import Path
 from dotenv import load_dotenv
 
 import faiss
 import anthropic
+from runtime_config import ENV_FILE, INDEX_DIR, configure_local_environment
+
+configure_local_environment()
+
 from sentence_transformers import SentenceTransformer
 
-load_dotenv()   # picks up provider keys from .env if present
+load_dotenv(ENV_FILE)   # picks up provider keys from the local .env if present
 
-INDEX_DIR   = Path("./index")
 EMBED_MODEL = "BAAI/bge-large-en-v1.5"
 TOP_K       = 8
 MAX_TOKENS  = 2048

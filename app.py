@@ -12,8 +12,9 @@ import time
 import streamlit as st
 from dotenv import load_dotenv
 from rag import query, resolve_api_credentials
+from runtime_config import ENV_FILE
 
-load_dotenv()
+load_dotenv(ENV_FILE)
 
 # ── Rate limiting ─────────────────────────────────────────────────────────────
 # Caps total queries against the shared server-side API key within a sliding

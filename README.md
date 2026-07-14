@@ -128,6 +128,175 @@ source .venv/bin/activate   # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+**Optional: install with Docker**
+
+The hardened Docker setup below keeps the runtime container away from your local
+filesystem:
+
+- no bind mounts
+- no `--privileged`
+- runtime image does not include `git`
+- both containers can run with a read-only root filesystem
+- model caches, cloned repos, and the FAISS index stay under `/app`
+- serving happens from a separate runtime image after ingestion completes
+
+1. Create a `.env` file from the example and add your API key:
+
+```bash
+cp .env.example .env
+```
+
+2. Build the one-time ingestion image:
+
+```bash
+docker build --target ingest -t sphenix-rag-ingest .
+```
+
+3. Create Docker-managed volumes for the app state:
+
+```bash
+docker volume create sphenix-rag-cache
+docker volume create sphenix-rag-index
+docker volume create sphenix-rag-repos
+```
+
+4. Run ingestion in an isolated container with no host directory mounts:
+
+```bash
+docker run --rm \
+  --name sphenix-rag-ingest \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=256m \
+  --env-file .env \
+  --mount source=sphenix-rag-cache,target=/app/.cache \
+  --mount source=sphenix-rag-index,target=/app/index \
+  --mount source=sphenix-rag-repos,target=/app/repos \
+  --cap-drop=ALL \
+  --security-opt no-new-privileges:true \
+  sphenix-rag-ingest
+```
+
+This step clones the public sPHENIX repositories, downloads the embedding model,
+and writes all state under `/app/.cache`, `/app/index`, and `/app/repos`.
+Nothing from your host filesystem is mounted into the container.
+
+5. Build the runtime image:
+
+```bash
+docker build --target runtime -t sphenix-rag .
+```
+
+6. Run the web app from the runtime image:
+
+```bash
+docker run -d \
+  --name sphenix-rag \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=256m \
+  --publish 127.0.0.1:8501:8501 \
+  --env-file .env \
+  --mount source=sphenix-rag-cache,target=/app/.cache \
+  --mount source=sphenix-rag-index,target=/app/index,readonly \
+  --cap-drop=ALL \
+  --security-opt no-new-privileges:true \
+  sphenix-rag
+```
+
+7. Open the assistant in your browser:
+
+```text
+http://localhost:8501
+```
+
+Useful container commands:
+
+```bash
+docker stop sphenix-rag
+docker start sphenix-rag
+docker run --rm \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=256m \
+  --env-file .env \
+  --mount source=sphenix-rag-cache,target=/app/.cache \
+  --mount source=sphenix-rag-index,target=/app/index \
+  --mount source=sphenix-rag-repos,target=/app/repos \
+  --cap-drop=ALL \
+  --security-opt no-new-privileges:true \
+  sphenix-rag-ingest
+```
+
+Important notes:
+
+- Do not use `-v` or `--mount type=bind` if you want the container isolated from local files.
+- Do not use `--privileged`.
+- The runtime container has no `git` executable, so it cannot refresh remote repos itself.
+- The application now stores its cache under `/app/.cache`; the repo already ignores that directory locally.
+- Do not mount `/var/run/docker.sock`, SSH agent sockets, `~/.ssh`, `~/.aws`, `~/.config`, or other host credential/config directories into either container.
+- The runtime container only needs `/app/.cache` as writable state and `/app/index` as read-only data. It does not need `/app/repos`.
+- If you also need to block access to services running on the host machine, enforce that separately with your OS firewall or Docker Desktop network policy.
+
+**Optional hardening for host-network isolation**
+
+If you want the container to have a harder time reaching services running on the host machine itself, use the following OS-specific recipes in addition to the `127.0.0.1:8501:8501` publish binding above.
+
+**macOS (Docker Desktop)**
+
+1. Keep using localhost-only port publishing:
+
+```bash
+docker create \
+  --name sphenix-rag \
+  --publish 127.0.0.1:8501:8501 \
+  --env-file .env \
+  --cap-drop=ALL \
+  --security-opt no-new-privileges:true \
+  sphenix-rag \
+  tail -f /dev/null
+```
+
+2. In Docker Desktop, leave **Enable host networking** turned off.
+
+3. Turn on the macOS firewall:
+   `System Settings -> Network -> Firewall`
+
+4. Click **Options** and either:
+   - turn on **Block all incoming connections** for broad protection, or
+   - add specific host apps/services and set them to **Block**
+
+5. If you have sensitive sharing services enabled on the Mac, also turn them off in **Sharing** settings.
+
+**Linux (Docker Engine or Docker Desktop for Linux)**
+
+1. Keep using localhost-only port publishing:
+
+```bash
+docker create \
+  --name sphenix-rag \
+  --publish 127.0.0.1:8501:8501 \
+  --env-file .env \
+  --cap-drop=ALL \
+  --security-opt no-new-privileges:true \
+  sphenix-rag \
+  tail -f /dev/null
+```
+
+2. Do not run the container with `--network host`.
+
+3. Bind sensitive host services to `127.0.0.1` where possible so they are not listening on external host interfaces.
+
+4. If you need firewall rules around Docker traffic, prefer `iptables` / `nftables` rules that work with Docker's own chains.
+
+5. On Ubuntu or Debian, do not rely on UFW alone for published Docker ports. Docker publishes ports through `nat` rules before UFW's normal `INPUT` / `OUTPUT` chains.
+
+6. For Linux hosts that need stricter filtering of Docker-forwarded traffic, add rules in Docker's `DOCKER-USER` chain rather than appending ordinary `FORWARD` rules. Example pattern:
+
+```bash
+sudo iptables -I DOCKER-USER -m state --state RELATED,ESTABLISHED -j ACCEPT
+sudo iptables -I DOCKER-USER -i eth0 ! -s 192.0.2.0/24 -j DROP
+```
+
+Replace `eth0` and `192.0.2.0/24` with the real external interface and source range you want to allow.
+
 **3. Set your LLM provider API key**
 
 Copy the example environment file and add your key:
