@@ -100,6 +100,12 @@ st.markdown("""
   .rag-header { text-align: center; padding: 1rem 0 0.5rem; }
   .rag-header h1 { color: #58a6ff; font-size: 1.8rem; margin-bottom: 0; }
   .rag-header p  { color: #8b949e; font-size: 0.9rem; }
+  [data-testid="stChatInputTextArea"], .stChatInput textarea {
+    color: #000000 !important;
+  }
+  [data-testid="stChatInputTextArea"]::placeholder, .stChatInput textarea::placeholder {
+    color: #4b5563 !important;
+  }
 </style>
 """, unsafe_allow_html=True)
 

@@ -108,7 +108,7 @@ from HuggingFace on first run and cached locally. No GPU is required.
 
 ## Installation
 
-You can set up the assistant in one of two ways: a **Docker** install (most isolated and recommended for secure deployments) or a **pip** install directly into a local Python environment.
+You can set up the assistant in one of two ways: a **Docker** install (most isolated and recommended for secure deployments) or a **Python** install directly into a local environment. Both paths share the first two steps below, then split.
 
 **1. Clone this repository**
 
@@ -117,7 +117,52 @@ git clone https://github.com/<your-org>/sPHENIX_WorkflowAssistant.git
 cd sPHENIX_WorkflowAssistant
 ```
 
-**2. Install Python dependencies**
+**2. Set your LLM provider API key**
+
+Copy the example environment file and add your key:
+
+```bash
+cp .env.example .env
+```
+
+Then open `.env` and replace the placeholder:
+
+```
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+OPENAI_API_KEY=
+ANTHROPIC_MODEL=claude-sonnet-4-6
+OPENAI_MODEL=gpt-5.4
+OPENAI_REASONING_EFFORT=medium
+ALLOW_BROWSER_API_KEY=false
+TORCH_NUM_THREADS=
+```
+
+The `.env` file is listed in `.gitignore` and will never be committed to git.
+Never paste your API key directly into any Python file or a crontab line.
+Set `LLM_PROVIDER=openai` and `OPENAI_API_KEY=...` if you want to use OpenAI instead.
+Leave `ALLOW_BROWSER_API_KEY=false` unless you explicitly want the sidebar key
+field and you trust the connection your collaborators are using.
+`OPENAI_MODEL` accepts any model your OpenAI account has access to — verify
+the exact model ID in the OpenAI dashboard/docs rather than guessing, since
+an invalid ID just fails at query time. For reasoning-capable OpenAI models,
+set `OPENAI_REASONING_EFFORT` to `low`, `medium`, or `high` to trade response
+latency for answer quality (higher effort is slower); leave it blank to omit
+the parameter entirely, which is required for non-reasoning models. This has
+no effect when `LLM_PROVIDER=anthropic`.
+Set `TORCH_NUM_THREADS` (e.g. `2`) to cap CPU threads used during embedding —
+useful if ingestion is spinning up laptop fans. Leave it blank to use all
+available cores (fastest, but hottest). This applies whether you run
+`ingest.py` directly or inside Docker (via `--env-file .env`).
+
+This file is used by both paths below — Docker reads it via `--env-file .env`,
+and a local Python install reads it via `python-dotenv`.
+
+---
+
+### Using Python
+
+**3. Install Python dependencies**
 
 Using a virtual environment is recommended:
 
@@ -133,9 +178,15 @@ If you do not want to set up a new virtual environment, install directly into yo
 pip install -r requirements.txt
 ```
 
-**Docker installation (secure default)**
+Once dependencies are installed, continue to [Building the index](#building-the-index)
+and [Running the assistant](#running-the-assistant) below to finish setup — those
+steps apply to the Python install.
 
-The Docker flow below is the most isolated default setup in this README. Follow
+---
+
+### Using Docker
+
+The Docker flow below is the most isolated setup in this README. Follow
 these steps as written if you want the safest first install:
 
 - no bind mounts
@@ -191,21 +242,16 @@ manual `docker run` steps instead.
 
 If you'd rather run the containers by hand (no Compose, or you want to see/
 adjust every flag yourself), follow the numbered steps below — they are
-equivalent to what the Compose file does.
+equivalent to what the Compose file does. `.env` should already exist from
+step 2 above.
 
-1. Create a `.env` file from the example:
-
-```bash
-cp .env.example .env
-```
-
-2. Build the one-time ingestion image:
+1. Build the one-time ingestion image:
 
 ```bash
 docker build --target ingest -t sphenix-rag-ingest .
 ```
 
-3. Create Docker-managed volumes for the app state:
+2. Create Docker-managed volumes for the app state:
 
 ```bash
 docker volume create sphenix-rag-cache
@@ -213,7 +259,7 @@ docker volume create sphenix-rag-index
 docker volume create sphenix-rag-repos
 ```
 
-4. Run ingestion in an isolated container with no host directory mounts:
+3. Run ingestion in an isolated container with no host directory mounts:
 
 ```bash
 docker run --rm \
@@ -248,13 +294,13 @@ than the process being slowed down — check `docker inspect <container>
 --format '{{.State.OOMKilled}}'` if a run dies unexpectedly, and raise the
 limit if so.
 
-5. Build the runtime image:
+4. Build the runtime image:
 
 ```bash
 docker build --target runtime -t sphenix-rag .
 ```
 
-6. Run the web app from the runtime image with localhost-only publishing:
+5. Run the web app from the runtime image with localhost-only publishing:
 
 ```bash
 docker run -d \
@@ -271,7 +317,7 @@ docker run -d \
   sphenix-rag
 ```
 
-7. Open the assistant in your browser:
+6. Open the assistant in your browser:
 
 ```text
 http://localhost:8501
@@ -410,39 +456,12 @@ sudo iptables -I DOCKER-USER -i eth0 ! -s 192.0.2.0/24 -j DROP
 
 Replace `eth0` and `192.0.2.0/24` with the real external interface and source range you want to allow.
 
-**3. Set your LLM provider API key**
-
-Copy the example environment file and add your key:
-
-```bash
-cp .env.example .env
-```
-
-Then open `.env` and replace the placeholder:
-
-```
-LLM_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-your-key-here
-OPENAI_API_KEY=
-ANTHROPIC_MODEL=claude-sonnet-4-6
-OPENAI_MODEL=gpt-4.1-mini
-ALLOW_BROWSER_API_KEY=false
-TORCH_NUM_THREADS=
-```
-
-The `.env` file is listed in `.gitignore` and will never be committed to git.
-Never paste your API key directly into any Python file or a crontab line.
-Set `LLM_PROVIDER=openai` and `OPENAI_API_KEY=...` if you want to use OpenAI instead.
-Leave `ALLOW_BROWSER_API_KEY=false` unless you explicitly want the sidebar key
-field and you trust the connection your collaborators are using.
-Set `TORCH_NUM_THREADS` (e.g. `2`) to cap CPU threads used during embedding —
-useful if ingestion is spinning up laptop fans. Leave it blank to use all
-available cores (fastest, but hottest). This applies whether you run
-`ingest.py` directly or inside Docker (via `--env-file .env`).
-
 ---
 
 ## Building the index
+
+*(This section is for the Python install. Docker users already built the index
+as part of the [Using Docker](#using-docker) steps above.)*
 
 Run the ingestion pipeline once before launching the assistant:
 
@@ -474,6 +493,10 @@ python ingest.py --full
 ---
 
 ## Running the assistant
+
+*(The web interface and CLI sections below are for the Python install. Docker
+users already started the app as part of the [Using Docker](#using-docker)
+steps above; open `http://localhost:8501` directly.)*
 
 **Web interface (recommended):**
 

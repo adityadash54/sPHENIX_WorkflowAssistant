@@ -30,7 +30,8 @@ TOP_K       = 8
 MAX_TOKENS  = 2048
 MAX_QUERY_CHARS = 2000   # FIX: cap input length to prevent oversized prompts
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
-OPENAI_MODEL    = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini")
+OPENAI_MODEL    = os.environ.get("OPENAI_MODEL", "gpt-5.4")
+OPENAI_REASONING_EFFORT = os.environ.get("OPENAI_REASONING_EFFORT", "medium").strip().lower() or None
 SUPPORTED_PROVIDERS = ("anthropic", "openai")
 
 # Singleton cache — avoids reloading on every Streamlit query
@@ -217,10 +218,15 @@ def _query_openai(messages: list[dict], api_key: str) -> str:
             "content": [{"type": "input_text", "text": message["content"]}],
         })
 
+    kwargs = {}
+    if OPENAI_REASONING_EFFORT:
+        kwargs["reasoning"] = {"effort": OPENAI_REASONING_EFFORT}
+
     response = client.responses.create(
         model=OPENAI_MODEL,
         input=input_messages,
         max_output_tokens=MAX_TOKENS,
+        **kwargs,
     )
     return response.output_text
 
