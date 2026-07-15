@@ -1,0 +1,14 @@
+.git
+.gitignore
+.env
+.env.*
+__pycache__/
+*.pyc
+.pycache_local/
+.cache/
+index/
+repos/
+.venv/
+.streamlit/
+.agents/
+.codex/

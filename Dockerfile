@@ -18,7 +18,7 @@ COPY requirements.txt ./
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
-    && python -m pip install --no-cache-dir -r requirements.txt \
+    && python -m pip install --no-cache-dir --default-timeout=120 --retries 10 -r requirements.txt \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . .

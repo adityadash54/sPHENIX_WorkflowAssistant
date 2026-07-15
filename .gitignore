@@ -6,5 +6,6 @@ ProjectDocumentation.txt
 .venv/
 __pycache__/
 *.pyc
+.cache/
 index/
 repos/
