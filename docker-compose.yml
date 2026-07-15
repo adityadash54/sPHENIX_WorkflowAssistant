@@ -40,7 +40,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2"
+          cpus: "4"
+          memory: 6G
 
   app:
     build:
@@ -62,6 +63,10 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
 
 volumes:
   sphenix-rag-cache:

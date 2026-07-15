@@ -224,7 +224,8 @@ docker run --rm \
   --mount source=sphenix-rag-cache,target=/app/.cache \
   --mount source=sphenix-rag-index,target=/app/index \
   --mount source=sphenix-rag-repos,target=/app/repos \
-  --cpus=2 \
+  --cpus=4 \
+  --memory=6g \
   --cap-drop=ALL \
   --security-opt no-new-privileges:true \
   sphenix-rag-ingest
@@ -234,11 +235,18 @@ This step clones the public sPHENIX repositories, downloads the embedding model,
 and writes all state under `/app/.cache`, `/app/index`, and `/app/repos`.
 Nothing from your host filesystem is mounted into the container.
 
-`--cpus=2` caps how much CPU the embedding step can use — embedding
+`--cpus=4` caps how much CPU the embedding step can use — embedding
 `macros`/`coresoftware` is CPU-heavy and will otherwise spin up every core
 (and your fans) for the duration of the build. Raise or drop the flag to
 trade heat for ingest speed; add `TORCH_NUM_THREADS` to `.env` for the same
 throttling when running `ingest.py` outside Docker.
+
+`--memory=6g` caps how much RAM the ingest container can use, based on an
+observed peak of ~3-4GB while embedding `macros`/`coresoftware`. If ingest
+ever needs more than this, the container is killed (exit code 137) rather
+than the process being slowed down — check `docker inspect <container>
+--format '{{.State.OOMKilled}}'` if a run dies unexpectedly, and raise the
+limit if so.
 
 5. Build the runtime image:
 
@@ -257,6 +265,7 @@ docker run -d \
   --env-file .env \
   --mount source=sphenix-rag-cache,target=/app/.cache \
   --mount source=sphenix-rag-index,target=/app/index,readonly \
+  --cpus=2 \
   --cap-drop=ALL \
   --security-opt no-new-privileges:true \
   sphenix-rag
@@ -284,7 +293,8 @@ docker run --rm \
   --mount source=sphenix-rag-cache,target=/app/.cache \
   --mount source=sphenix-rag-index,target=/app/index \
   --mount source=sphenix-rag-repos,target=/app/repos \
-  --cpus=2 \
+  --cpus=4 \
+  --memory=6g \
   --cap-drop=ALL \
   --security-opt no-new-privileges:true \
   sphenix-rag-ingest
@@ -296,6 +306,7 @@ docker run -d \
   --env-file .env \
   --mount source=sphenix-rag-cache,target=/app/.cache \
   --mount source=sphenix-rag-index,target=/app/index,readonly \
+  --cpus=2 \
   --cap-drop=ALL \
   --security-opt no-new-privileges:true \
   sphenix-rag
@@ -315,7 +326,8 @@ docker run --rm \
   --mount source=sphenix-rag-cache,target=/app/.cache \
   --mount source=sphenix-rag-index,target=/app/index \
   --mount source=sphenix-rag-repos,target=/app/repos \
-  --cpus=2 \
+  --cpus=4 \
+  --memory=6g \
   --cap-drop=ALL \
   --security-opt no-new-privileges:true \
   sphenix-rag-ingest
