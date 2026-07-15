@@ -1,0 +1,72 @@
+# Hardened Compose file — encodes the same isolation flags documented in
+# README.md's manual `docker run` walkthrough, so the safe configuration is
+# the default instead of something you have to type correctly by hand.
+#
+# No bind mounts are defined anywhere below. The only volumes are the three
+# named/Docker-managed ones, and the only host path this file ever touches
+# is `.env` (read by the Docker CLI to set container env vars — the
+# container itself never receives a path into your filesystem).
+#
+# One-time ingestion build:
+#   docker compose --profile ingest run --rm ingest
+#
+# Start the web app:
+#   docker compose up -d app
+#
+# Re-run ingestion later (e.g. after `git pull --ff-only`):
+#   docker compose --profile ingest run --rm ingest
+
+services:
+  ingest:
+    build:
+      context: .
+      target: ingest
+    image: sphenix-rag-ingest
+    container_name: sphenix-rag-ingest
+    profiles: ["ingest"]   # excluded from `docker compose up` by default
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    env_file:
+      - .env
+    volumes:
+      - sphenix-rag-cache:/app/.cache
+      - sphenix-rag-index:/app/index
+      - sphenix-rag-repos:/app/repos
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+
+  app:
+    build:
+      context: .
+      target: runtime
+    image: sphenix-rag
+    container_name: sphenix-rag
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    env_file:
+      - .env
+    volumes:
+      - sphenix-rag-cache:/app/.cache
+      - sphenix-rag-index:/app/index:ro
+    ports:
+      - "127.0.0.1:8501:8501"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  sphenix-rag-cache:
+    name: sphenix-rag-cache
+  sphenix-rag-index:
+    name: sphenix-rag-index
+  sphenix-rag-repos:
+    name: sphenix-rag-repos

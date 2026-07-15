@@ -159,6 +159,40 @@ Keep the host-network isolation defaults in place:
 - if the host runs sensitive services, keep them bound to `127.0.0.1` where possible
 - if you need stricter host-side filtering, use the OS-specific firewall guidance in [Additional host-side hardening](#additional-host-side-hardening-optional)
 
+**Recommended: `docker-compose.yml` (avoids hand-typing flags)**
+
+The repo ships a `docker-compose.yml` that encodes every flag from the manual
+walkthrough below — read-only root filesystem, `cap_drop: ALL`,
+`no-new-privileges`, `127.0.0.1`-only publishing, a CPU cap on ingestion, and
+**no bind mounts** (only the three named volumes below). Using it means you
+never have to correctly retype ~10 flags by hand:
+
+```bash
+cp .env.example .env      # then edit .env and add your API key
+
+docker compose --profile ingest run --rm ingest   # one-time index build
+docker compose up -d app                          # start the web UI
+```
+
+The only exception to "not a hand-typed flag" is `.env` itself, which you
+still edit directly. Rebuilding after a `git pull`:
+
+```bash
+git pull --ff-only
+docker compose build
+docker compose --profile ingest run --rm ingest
+docker compose up -d app
+```
+
+One trade-off versus the manual `docker run` form below: Compose's `tmpfs`
+option only supports a size limit, not the `noexec,nosuid` mount flags used
+in the manual commands. If you need that extra `/tmp` restriction, use the
+manual `docker run` steps instead.
+
+If you'd rather run the containers by hand (no Compose, or you want to see/
+adjust every flag yourself), follow the numbered steps below — they are
+equivalent to what the Compose file does.
+
 1. Create a `.env` file from the example:
 
 ```bash
@@ -190,6 +224,7 @@ docker run --rm \
   --mount source=sphenix-rag-cache,target=/app/.cache \
   --mount source=sphenix-rag-index,target=/app/index \
   --mount source=sphenix-rag-repos,target=/app/repos \
+  --cpus=2 \
   --cap-drop=ALL \
   --security-opt no-new-privileges:true \
   sphenix-rag-ingest
@@ -198,6 +233,12 @@ docker run --rm \
 This step clones the public sPHENIX repositories, downloads the embedding model,
 and writes all state under `/app/.cache`, `/app/index`, and `/app/repos`.
 Nothing from your host filesystem is mounted into the container.
+
+`--cpus=2` caps how much CPU the embedding step can use — embedding
+`macros`/`coresoftware` is CPU-heavy and will otherwise spin up every core
+(and your fans) for the duration of the build. Raise or drop the flag to
+trade heat for ingest speed; add `TORCH_NUM_THREADS` to `.env` for the same
+throttling when running `ingest.py` outside Docker.
 
 5. Build the runtime image:
 
@@ -243,6 +284,7 @@ docker run --rm \
   --mount source=sphenix-rag-cache,target=/app/.cache \
   --mount source=sphenix-rag-index,target=/app/index \
   --mount source=sphenix-rag-repos,target=/app/repos \
+  --cpus=2 \
   --cap-drop=ALL \
   --security-opt no-new-privileges:true \
   sphenix-rag-ingest
@@ -273,6 +315,7 @@ docker run --rm \
   --mount source=sphenix-rag-cache,target=/app/.cache \
   --mount source=sphenix-rag-index,target=/app/index \
   --mount source=sphenix-rag-repos,target=/app/repos \
+  --cpus=2 \
   --cap-drop=ALL \
   --security-opt no-new-privileges:true \
   sphenix-rag-ingest
@@ -289,6 +332,7 @@ Important notes:
 - Do not mount `/var/run/docker.sock`, SSH agent sockets, `~/.ssh`, `~/.aws`, `~/.config`, or other host credential/config directories into either container.
 - The runtime container only needs `/app/.cache` as writable state and `/app/index` as read-only data. It does not need `/app/repos`.
 - If you also need to block access to services running on the host machine, apply the host-side controls below.
+- `docker-compose.yml` applies all of the above by construction — if you're hand-rolling `docker run` commands instead (e.g. a custom deployment), double check each flag against this list rather than copying an older command from shell history.
 
 **Additional host-side hardening (optional)**
 
@@ -371,6 +415,7 @@ OPENAI_API_KEY=
 ANTHROPIC_MODEL=claude-sonnet-4-6
 OPENAI_MODEL=gpt-4.1-mini
 ALLOW_BROWSER_API_KEY=false
+TORCH_NUM_THREADS=
 ```
 
 The `.env` file is listed in `.gitignore` and will never be committed to git.
@@ -378,6 +423,10 @@ Never paste your API key directly into any Python file or a crontab line.
 Set `LLM_PROVIDER=openai` and `OPENAI_API_KEY=...` if you want to use OpenAI instead.
 Leave `ALLOW_BROWSER_API_KEY=false` unless you explicitly want the sidebar key
 field and you trust the connection your collaborators are using.
+Set `TORCH_NUM_THREADS` (e.g. `2`) to cap CPU threads used during embedding —
+useful if ingestion is spinning up laptop fans. Leave it blank to use all
+available cores (fastest, but hottest). This applies whether you run
+`ingest.py` directly or inside Docker (via `--env-file .env`).
 
 ---
 

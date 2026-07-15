@@ -35,3 +35,11 @@ def configure_local_environment() -> None:
         str(CACHE_DIR / "sentence-transformers"),
     )
     os.environ.setdefault("TORCH_HOME", str(CACHE_DIR / "torch"))
+
+    # Optional: cap CPU threads used by torch/numpy during embedding.
+    # Set TORCH_NUM_THREADS in .env to throttle CPU/fan usage on laptops;
+    # left unset by default so behaviour is unchanged (torch uses all cores).
+    num_threads = os.environ.get("TORCH_NUM_THREADS")
+    if num_threads:
+        os.environ.setdefault("OMP_NUM_THREADS", num_threads)
+        os.environ.setdefault("MKL_NUM_THREADS", num_threads)
