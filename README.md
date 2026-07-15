@@ -150,6 +150,10 @@ set `OPENAI_REASONING_EFFORT` to `low`, `medium`, or `high` to trade response
 latency for answer quality (higher effort is slower); leave it blank to omit
 the parameter entirely, which is required for non-reasoning models. This has
 no effect when `LLM_PROVIDER=anthropic`.
+Changing `OPENAI_MODEL` later (for example from `gpt-5.4-mini` to `gpt-5.4`)
+does not require reinstalling dependencies or rebuilding the FAISS index.
+Update `.env`, then restart only the app process/container so it reloads the
+environment.
 Set `TORCH_NUM_THREADS` (e.g. `2`) to cap CPU threads used during embedding —
 useful if ingestion is spinning up laptop fans. Leave it blank to use all
 available cores (fastest, but hottest). This applies whether you run
@@ -317,11 +321,15 @@ docker run -d \
   sphenix-rag
 ```
 
-6. Open the assistant in your browser:
+6. After the runtime container is running, open the assistant in your browser:
 
 ```text
 http://localhost:8501
 ```
+
+Opening the URL does not start the container by itself. If the page does not
+load, first confirm step 5 completed successfully and that the `sphenix-rag`
+container is still running.
 
 If the GitHub repository has changed and you want the latest version of the app with the same hardened Docker settings, pull the latest commits, rebuild the images, refresh the index, and restart the runtime container:
 
@@ -495,8 +503,10 @@ python ingest.py --full
 ## Running the assistant
 
 *(The web interface and CLI sections below are for the Python install. Docker
-users already started the app as part of the [Using Docker](#using-docker)
-steps above; open `http://localhost:8501` directly.)*
+users must first start the runtime container as part of the
+[Using Docker](#using-docker) steps above. Only after `docker compose up -d app`
+or the manual `docker run -d ... --publish 127.0.0.1:8501:8501 ... sphenix-rag`
+is running should you open `http://localhost:8501` in a browser.)*
 
 **Web interface (recommended):**
 
@@ -746,6 +756,11 @@ Run `python ingest.py` to build the index before starting the assistant.
 **`ANTHROPIC_API_KEY is not set` or `OPENAI_API_KEY is not set`**
 Ensure your `.env` file exists, `LLM_PROVIDER` matches the provider you want, and
 the corresponding API key is present in the same directory as `rag.py` and `app.py`.
+
+**I changed `OPENAI_MODEL` but the app is still using the old model**
+Restart the running app so it re-reads `.env`. You do not need to rerun
+`ingest.py`, rebuild the FAISS index, or reinstall dependencies. For Docker,
+recreate only the runtime container.
 
 **Pull fails during ingestion**
 The cached repository in `repos/<name>/` may be corrupted. Delete that subdirectory
